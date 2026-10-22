@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Click Ball Game</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+canvas{display:block;background:#080818;}
+#ui{
+    position:fixed;
+    top:16px;
+    left:16px;
+    color:#fff;
+    font-family:Arial;
+    font-size:22px;
+    z-index:10;
+}
+</style>
+</head>
+<body>
+<div id="ui">Score: <span id="score">0</span></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// 光照
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const pointLight = new THREE.PointLight(0xffffff, 0.8);
+pointLight.position.set(3,4,4);
+scene.add(pointLight);
+
+camera.position.z = 12;
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableZoom = false;
+controls.enableRotate = false;
+
+// UI
+const scoreDom = document.getElementById("score");
+let score = 0;
+
+// -------- 游戏参数（这里实现你要求的：时长收敛，递减幅度越来越小）--------
+const BASE_DURATION = 2.2;    // 初始小球存活时间（秒）
+const MIN_DURATION = 0.6;     // 最后稳定的下限时长
+const CONVERGE_SPEED = 0.025; // 收敛速度，越小收敛越慢
+let ballList = [];
+
+// 获取当前小球存活时间：逐步靠近最小值，每次减少量越来越小
+function getBallLifeTime(){
+    const diff = BASE_DURATION - MIN_DURATION;
+    // 指数收敛公式：diff * exp(-CONVERGE_SPEED * score)
+    const remain = diff * Math.exp(-CONVERGE_SPEED * score);
+    return MIN_DURATION + remain;
+}
+
+// 生成小球
+function spawnBall(){
+    const geo = new THREE.SphereGeometry(0.45,24,24);
+    const mat = new THREE.MeshPhongMaterial({
+        color: new THREE.Color(Math.random(), Math.random(), Math.random())
+    });
+    const ball = new THREE.Mesh(geo, mat);
+    // 随机位置
+    ball.position.set(
+        (Math.random()-0.5)*7,
+        (Math.random()-0.5)*5,
+        0
+    );
+    scene.add(ball);
+
+    const life = getBallLifeTime();
+    const ballData = {
+        mesh: ball,
+        expireTime: performance.now() + life * 1000,
+        isClicked: false
+    };
+    ballList.push(ballData);
+}
+
+// 射线检测：鼠标点击小球
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+window.addEventListener("click", (e)=>{
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(ballList.map(b=>b.mesh));
+    if(intersects.length > 0){
+        const hitMesh = intersects[0].object;
+        const hitItem = ballList.find(b=>b.mesh === hitMesh);
+        if(hitItem && !hitItem.isClicked){
+            hitItem.isClicked = true;
+            score += 10;
+            scoreDom.innerText = score;
+        }
+    }
+})
+
+// 定时生成小球
+setInterval(spawnBall, 1300);
+
+// 游戏循环
+function animate(){
+    requestAnimationFrame(animate);
+    const now = performance.now();
+    for(let i = ballList.length - 1; i >= 0; i--){
+        const b = ballList[i];
+        if(now > b.expireTime){
+            if(!b.isClicked){
+                // 超时没点到：扣分
+                score -= 5;
+                scoreDom.innerText = score;
+            }
+            scene.remove(b.mesh);
+            ballList.splice(i,1);
+        }
+    }
+    controls.update();
+    renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize',()=>{
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+})
+</script>
+</body>
+</html>
