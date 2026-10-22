@@ -15,10 +15,97 @@ canvas{display:block;background:#080818;}
     font-size:22px;
     z-index:10;
 }
+#topRight{
+    position:fixed;
+    top:16px;
+    right:16px;
+    z-index:10;
+    display:flex;
+    gap:10px;
+}
+#topRight button{
+    padding:8px 16px;
+    font-size:14px;
+    font-family:Arial;
+    border:none;
+    border-radius:6px;
+    background:#C9A66B;
+    color:#0D1B2A;
+    cursor:pointer;
+    font-weight:bold;
+}
+#topRight button:hover{
+    background:#b8955a;
+}
+#startScreen{
+    position:fixed;
+    top:0;left:0;right:0;bottom:0;
+    background:rgba(8,8,24,0.92);
+    z-index:100;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    color:#fff;
+    font-family:Arial;
+}
+#startScreen h1{
+    font-size:36px;
+    margin-bottom:16px;
+    color:#C9A66B;
+}
+#startScreen p{
+    font-size:15px;
+    color:#aaa;
+    margin-bottom:30px;
+    line-height:1.6;
+    text-align:center;
+}
+#startBtn{
+    padding:14px 48px;
+    font-size:18px;
+    border:none;
+    border-radius:8px;
+    background:#C9A66B;
+    color:#0D1B2A;
+    cursor:pointer;
+    font-weight:bold;
+}
+#startBtn:hover{
+    background:#b8955a;
+}
+#pauseOverlay{
+    position:fixed;
+    top:0;left:0;right:0;bottom:0;
+    background:rgba(8,8,24,0.7);
+    z-index:50;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    color:#C9A66B;
+    font-size:32px;
+    font-family:Arial;
+    font-weight:bold;
+}
 </style>
 </head>
 <body>
 <div id="ui">Score: <span id="score">0</span></div>
+
+<div id="topRight">
+    <button id="pauseBtn">暂停</button>
+    <button id="resetBtn">重来</button>
+</div>
+
+<div id="pauseOverlay">已暂停</div>
+
+<div id="startScreen">
+    <h1>🎯 点击小球</h1>
+    <p>小球会随机出现，在消失前点中它 +10分<br>
+    没点到小球消失 -5分<br>
+    分数越高，小球存在时间越短，难度逐步收敛</p>
+    <button id="startBtn">开始游戏</button>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
@@ -29,7 +116,6 @@ const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// 光照
 scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 const pointLight = new THREE.PointLight(0xffffff, 0.8);
 pointLight.position.set(3,4,4);
@@ -40,32 +126,30 @@ const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableZoom = false;
 controls.enableRotate = false;
 
-// UI
 const scoreDom = document.getElementById("score");
 let score = 0;
+let gameStarted = false;
+let gamePaused = false;
 
-// -------- 游戏参数（这里实现你要求的：时长收敛，递减幅度越来越小）--------
-const BASE_DURATION = 2.2;    // 初始小球存活时间（秒）
-const MIN_DURATION = 0.6;     // 最后稳定的下限时长
-const CONVERGE_SPEED = 0.025; // 收敛速度，越小收敛越慢
+const BASE_DURATION = 2.2;
+const MIN_DURATION = 0.6;
+const CONVERGE_SPEED = 0.025;
 let ballList = [];
+let lastSpawnTime = 0;
+const SPAWN_INTERVAL = 1300;
 
-// 获取当前小球存活时间：逐步靠近最小值，每次减少量越来越小
 function getBallLifeTime(){
     const diff = BASE_DURATION - MIN_DURATION;
-    // 指数收敛公式：diff * exp(-CONVERGE_SPEED * score)
     const remain = diff * Math.exp(-CONVERGE_SPEED * score);
     return MIN_DURATION + remain;
 }
 
-// 生成小球
 function spawnBall(){
     const geo = new THREE.SphereGeometry(0.45,24,24);
     const mat = new THREE.MeshPhongMaterial({
         color: new THREE.Color(Math.random(), Math.random(), Math.random())
     });
     const ball = new THREE.Mesh(geo, mat);
-    // 随机位置
     ball.position.set(
         (Math.random()-0.5)*7,
         (Math.random()-0.5)*5,
@@ -74,18 +158,17 @@ function spawnBall(){
     scene.add(ball);
 
     const life = getBallLifeTime();
-    const ballData = {
+    ballList.push({
         mesh: ball,
         expireTime: performance.now() + life * 1000,
         isClicked: false
-    };
-    ballList.push(ballData);
+    });
 }
 
-// 射线检测：鼠标点击小球
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 window.addEventListener("click", (e)=>{
+    if(!gameStarted || gamePaused) return;
     mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
@@ -101,29 +184,61 @@ window.addEventListener("click", (e)=>{
     }
 })
 
-// 定时生成小球
-setInterval(spawnBall, 1300);
+// 开始按钮
+document.getElementById("startBtn").addEventListener("click", ()=>{
+    document.getElementById("startScreen").style.display = "none";
+    gameStarted = true;
+    lastSpawnTime = performance.now();
+});
 
-// 游戏循环
-function animate(){
+// 暂停按钮
+document.getElementById("pauseBtn").addEventListener("click", ()=>{
+    if(!gameStarted) return;
+    gamePaused = !gamePaused;
+    document.getElementById("pauseOverlay").style.display = gamePaused ? "flex" : "none";
+    document.getElementById("pauseBtn").innerText = gamePaused ? "继续" : "暂停";
+});
+
+// 重来按钮
+document.getElementById("resetBtn").addEventListener("click", ()=>{
+    // 清空所有小球
+    ballList.forEach(b=>scene.remove(b.mesh));
+    ballList = [];
+    score = 0;
+    scoreDom.innerText = 0;
+    gamePaused = false;
+    document.getElementById("pauseOverlay").style.display = "none";
+    document.getElementById("pauseBtn").innerText = "暂停";
+    lastSpawnTime = performance.now();
+});
+
+function animate(timeStamp){
     requestAnimationFrame(animate);
-    const now = performance.now();
-    for(let i = ballList.length - 1; i >= 0; i--){
-        const b = ballList[i];
-        if(now > b.expireTime){
-            if(!b.isClicked){
-                // 超时没点到：扣分
-                score -= 5;
-                scoreDom.innerText = score;
+
+    if(gameStarted && !gamePaused){
+        if(timeStamp - lastSpawnTime > SPAWN_INTERVAL){
+            spawnBall();
+            lastSpawnTime = timeStamp;
+        }
+
+        const now = performance.now();
+        for(let i = ballList.length - 1; i >= 0; i--){
+            const b = ballList[i];
+            if(now > b.expireTime){
+                if(!b.isClicked){
+                    score -= 5;
+                    scoreDom.innerText = score;
+                }
+                scene.remove(b.mesh);
+                ballList.splice(i,1);
             }
-            scene.remove(b.mesh);
-            ballList.splice(i,1);
         }
     }
+
     controls.update();
     renderer.render(scene, camera);
 }
-animate();
+requestAnimationFrame(animate);
 
 window.addEventListener('resize',()=>{
     camera.aspect = window.innerWidth / window.innerHeight;
