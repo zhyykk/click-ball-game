@@ -7,85 +7,40 @@
 *{margin:0;padding:0;box-sizing:border-box}
 canvas{display:block;background:#080818;}
 #ui{
-    position:fixed;
-    top:16px;
-    left:16px;
-    color:#fff;
-    font-family:Arial;
-    font-size:22px;
-    z-index:10;
+    position:fixed;top:16px;left:16px;
+    color:#fff;font-family:Arial;font-size:22px;z-index:10;
 }
 #topRight{
-    position:fixed;
-    top:16px;
-    right:16px;
-    z-index:10;
-    display:flex;
-    gap:10px;
+    position:fixed;top:16px;right:16px;z-index:10;display:flex;gap:10px;
 }
 #topRight button{
-    padding:8px 16px;
-    font-size:14px;
-    font-family:Arial;
-    border:none;
-    border-radius:6px;
-    background:#C9A66B;
-    color:#0D1B2A;
-    cursor:pointer;
-    font-weight:bold;
+    padding:8px 16px;font-size:14px;font-family:Arial;
+    border:none;border-radius:6px;background:#C9A66B;
+    color:#0D1B2A;cursor:pointer;font-weight:bold;
 }
-#topRight button:hover{
-    background:#b8955a;
-}
+#topRight button:hover{background:#b8955a;}
 #startScreen{
-    position:fixed;
-    top:0;left:0;right:0;bottom:0;
-    background:rgba(8,8,24,0.92);
-    z-index:100;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    color:#fff;
-    font-family:Arial;
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    background:rgba(8,8,24,0.92);z-index:100;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    color:#fff;font-family:Arial;
 }
-#startScreen h1{
-    font-size:36px;
-    margin-bottom:16px;
-    color:#C9A66B;
-}
+#startScreen h1{font-size:36px;margin-bottom:16px;color:#C9A66B;}
 #startScreen p{
-    font-size:15px;
-    color:#aaa;
-    margin-bottom:30px;
-    line-height:1.6;
-    text-align:center;
+    font-size:15px;color:#aaa;margin-bottom:30px;
+    line-height:1.6;text-align:center;
 }
 #startBtn{
-    padding:14px 48px;
-    font-size:18px;
-    border:none;
-    border-radius:8px;
-    background:#C9A66B;
-    color:#0D1B2A;
-    cursor:pointer;
-    font-weight:bold;
+    padding:14px 48px;font-size:18px;border:none;border-radius:8px;
+    background:#C9A66B;color:#0D1B2A;cursor:pointer;font-weight:bold;
 }
-#startBtn:hover{
-    background:#b8955a;
-}
+#startBtn:hover{background:#b8955a;}
 #pauseOverlay{
-    position:fixed;
-    top:0;left:0;right:0;bottom:0;
-    background:rgba(8,8,24,0.7);
-    z-index:50;
-    display:none;
-    align-items:center;
-    justify-content:center;
-    color:#C9A66B;
-    font-size:32px;
-    font-family:Arial;
-    font-weight:bold;
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    background:rgba(8,8,24,0.7);z-index:50;
+    display:none;align-items:center;justify-content:center;
+    color:#C9A66B;font-size:32px;font-family:Arial;font-weight:bold;
 }
 </style>
 </head>
@@ -107,9 +62,38 @@ canvas{display:block;background:#080818;}
     <button id="startBtn">开始游戏</button>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+<!-- 用国内更快的CDN -->
+<script src="https://cdn.bootcdn.net/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+// ========== 先绑定UI按钮（不依赖Three.js，先确保按钮能用） ==========
+let gameStarted = false;
+let gamePaused = false;
+
+document.getElementById("startBtn").addEventListener("click", ()=>{
+    document.getElementById("startScreen").style.display = "none";
+    gameStarted = true;
+    lastSpawnTime = performance.now();
+});
+
+document.getElementById("pauseBtn").addEventListener("click", ()=>{
+    if(!gameStarted) return;
+    gamePaused = !gamePaused;
+    document.getElementById("pauseOverlay").style.display = gamePaused ? "flex" : "none";
+    document.getElementById("pauseBtn").innerText = gamePaused ? "继续" : "暂停";
+});
+
+document.getElementById("resetBtn").addEventListener("click", ()=>{
+    ballList.forEach(b=>scene.remove(b.mesh));
+    ballList = [];
+    score = 0;
+    scoreDom.innerText = 0;
+    gamePaused = false;
+    document.getElementById("pauseOverlay").style.display = "none";
+    document.getElementById("pauseBtn").innerText = "暂停";
+    lastSpawnTime = performance.now();
+});
+
+// ========== Three.js 场景初始化 ==========
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
 const renderer = new THREE.WebGLRenderer();
@@ -120,16 +104,10 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 const pointLight = new THREE.PointLight(0xffffff, 0.8);
 pointLight.position.set(3,4,4);
 scene.add(pointLight);
-
 camera.position.z = 12;
-const controls = new THREE.OrbitControls(camera, renderer.domElement);
-controls.enableZoom = false;
-controls.enableRotate = false;
 
 const scoreDom = document.getElementById("score");
 let score = 0;
-let gameStarted = false;
-let gamePaused = false;
 
 const BASE_DURATION = 2.2;
 const MIN_DURATION = 0.6;
@@ -156,11 +134,9 @@ function spawnBall(){
         0
     );
     scene.add(ball);
-
-    const life = getBallLifeTime();
     ballList.push({
         mesh: ball,
-        expireTime: performance.now() + life * 1000,
+        expireTime: performance.now() + getBallLifeTime() * 1000,
         isClicked: false
     });
 }
@@ -184,43 +160,13 @@ window.addEventListener("click", (e)=>{
     }
 })
 
-// 开始按钮
-document.getElementById("startBtn").addEventListener("click", ()=>{
-    document.getElementById("startScreen").style.display = "none";
-    gameStarted = true;
-    lastSpawnTime = performance.now();
-});
-
-// 暂停按钮
-document.getElementById("pauseBtn").addEventListener("click", ()=>{
-    if(!gameStarted) return;
-    gamePaused = !gamePaused;
-    document.getElementById("pauseOverlay").style.display = gamePaused ? "flex" : "none";
-    document.getElementById("pauseBtn").innerText = gamePaused ? "继续" : "暂停";
-});
-
-// 重来按钮
-document.getElementById("resetBtn").addEventListener("click", ()=>{
-    // 清空所有小球
-    ballList.forEach(b=>scene.remove(b.mesh));
-    ballList = [];
-    score = 0;
-    scoreDom.innerText = 0;
-    gamePaused = false;
-    document.getElementById("pauseOverlay").style.display = "none";
-    document.getElementById("pauseBtn").innerText = "暂停";
-    lastSpawnTime = performance.now();
-});
-
 function animate(timeStamp){
     requestAnimationFrame(animate);
-
     if(gameStarted && !gamePaused){
         if(timeStamp - lastSpawnTime > SPAWN_INTERVAL){
             spawnBall();
             lastSpawnTime = timeStamp;
         }
-
         const now = performance.now();
         for(let i = ballList.length - 1; i >= 0; i--){
             const b = ballList[i];
@@ -234,8 +180,6 @@ function animate(timeStamp){
             }
         }
     }
-
-    controls.update();
     renderer.render(scene, camera);
 }
 requestAnimationFrame(animate);
